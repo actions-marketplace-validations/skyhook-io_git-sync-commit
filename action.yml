@@ -75,7 +75,7 @@ runs:
         MAX_RETRIES: ${{ inputs.max_retries }}
       run: |
         set -euo pipefail
-
+ 
         echo "🔄 Starting git sync and commit process..."
 
         # Configure git user for this operation only
