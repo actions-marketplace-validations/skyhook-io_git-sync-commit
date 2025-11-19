@@ -5,7 +5,7 @@
 A GitHub Action that safely syncs, commits, and pushes changes with automatic rebase and retry logic to handle concurrent modifications.
 
 ## Why This Action?
-
+ 
 1. **Race condition handling**: Automatically retries push operations when concurrent changes occur
 2. **Rebase-first workflow**: Always rebases before pushing to maintain linear history
 3. **Safe stashing**: Preserves uncommitted changes during sync operations
