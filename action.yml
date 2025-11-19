@@ -1,0 +1,165 @@
+name: 'Skyhook Git Sync and Commit'
+description: 'Safely sync, commit, and push changes with automatic rebase and retry logic'
+author: 'Skyhook'
+
+branding:
+  icon: 'git-commit'
+  color: 'purple'
+
+inputs:
+  path:
+    description: 'Working directory for git operations'
+    required: false
+    default: '.'
+  commit_message:
+    description: 'Commit message'
+    required: true
+  commit_user_name:
+    description: 'Git committer name'
+    required: false
+    default: 'github-actions[bot]'
+  commit_user_email:
+    description: 'Git committer email'
+    required: false
+    default: '41898282+github-actions[bot]@users.noreply.github.com'
+  file_pattern:
+    description: 'Files to stage for commit (e.g., ".", "*.yml", "path/to/files/*")'
+    required: false
+    default: '.'
+  max_retries:
+    description: 'Maximum number of push retry attempts (handles concurrent pushes)'
+    required: false
+    default: '3'
+
+outputs:
+  committed:
+    description: 'Whether a commit was created (true/false)'
+    value: ${{ steps.commit.outputs.committed }}
+  commit_sha:
+    description: 'SHA of the created commit (empty if no commit)'
+    value: ${{ steps.commit.outputs.commit_sha }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate inputs
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if [[ ! -d "${{ inputs.path }}" ]]; then
+          echo "::error::Working directory not found: ${{ inputs.path }}"
+          exit 1
+        fi
+
+        if [[ -z "${{ inputs.commit_message }}" ]]; then
+          echo "::error::commit_message is required"
+          exit 1
+        fi
+
+        # Validate max_retries is a number
+        if ! [[ "${{ inputs.max_retries }}" =~ ^[0-9]+$ ]]; then
+          echo "::error::max_retries must be a positive integer"
+          exit 1
+        fi
+
+    - name: Sync and commit changes
+      id: commit
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      env:
+        COMMIT_MESSAGE: ${{ inputs.commit_message }}
+        COMMIT_USER_NAME: ${{ inputs.commit_user_name }}
+        COMMIT_USER_EMAIL: ${{ inputs.commit_user_email }}
+        FILE_PATTERN: ${{ inputs.file_pattern }}
+        MAX_RETRIES: ${{ inputs.max_retries }}
+      run: |
+        set -euo pipefail
+
+        echo "🔄 Starting git sync and commit process..."
+
+        # Configure git user for this operation only
+        git config user.name "$COMMIT_USER_NAME"
+        git config user.email "$COMMIT_USER_EMAIL"
+
+        # Stash any uncommitted changes (including untracked files)
+        echo "📦 Stashing current changes..."
+        git stash push -u -m "temp-stashed-changes" || true
+
+        # Pull latest changes with rebase
+        echo "⬇️  Pulling latest changes with rebase..."
+        git pull --rebase origin "$(git branch --show-current)"
+
+        # Pop the stash to restore changes
+        echo "📂 Restoring stashed changes..."
+        git stash pop || true
+
+        # Stage files matching the pattern
+        echo "➕ Staging files matching pattern: $FILE_PATTERN"
+        git add $FILE_PATTERN
+
+        # Check if there are changes to commit
+        if git diff --cached --quiet; then
+          echo "ℹ️  No changes to commit"
+          echo "committed=false" >> $GITHUB_OUTPUT
+          echo "commit_sha=" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        # Create commit
+        echo "💾 Creating commit..."
+        git commit -m "$COMMIT_MESSAGE"
+        COMMIT_SHA=$(git rev-parse HEAD)
+
+        echo "committed=true" >> $GITHUB_OUTPUT
+        echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+
+        # Push with retry logic
+        echo "⬆️  Pushing changes..."
+        ATTEMPT=1
+        while [ $ATTEMPT -le $MAX_RETRIES ]; do
+          echo "Push attempt $ATTEMPT of $MAX_RETRIES..."
+
+          if git push origin "$(git branch --show-current)"; then
+            echo "✅ Successfully pushed changes!"
+            exit 0
+          fi
+
+          if [ $ATTEMPT -lt $MAX_RETRIES ]; then
+            echo "⚠️  Push failed, rebasing and retrying..."
+            git pull --rebase origin "$(git branch --show-current)"
+          fi
+
+          ATTEMPT=$((ATTEMPT + 1))
+        done
+
+        echo "::error::Failed to push after $MAX_RETRIES attempts"
+        exit 1
+
+    - name: Generate summary
+      if: always()
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      run: |
+        set -euo pipefail
+
+        echo "## 🔄 Git Sync and Commit Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [[ "${{ steps.commit.outcome }}" == "success" ]]; then
+          if [[ "${{ steps.commit.outputs.committed }}" == "true" ]]; then
+            echo "✅ **Status:** Successfully committed and pushed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 📝 Commit Details" >> $GITHUB_STEP_SUMMARY
+            echo "- **SHA:** \`${{ steps.commit.outputs.commit_sha }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Message:** ${{ inputs.commit_message }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Author:** ${{ inputs.commit_user_name }} <${{ inputs.commit_user_email }}>" >> $GITHUB_STEP_SUMMARY
+            echo "- **Files:** \`${{ inputs.file_pattern }}\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️  **Status:** No changes to commit" >> $GITHUB_STEP_SUMMARY
+          fi
+        else
+          echo "❌ **Status:** Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check the logs above for error details." >> $GITHUB_STEP_SUMMARY
+        fi

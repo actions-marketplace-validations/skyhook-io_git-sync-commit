@@ -1,0 +1,144 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test-basic-commit:
+    runs-on: ubuntu-latest
+    name: Test basic commit and push
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create test file
+        run: |
+          mkdir -p test-output
+          echo "Test run ${{ github.run_number }}" > test-output/test.txt
+
+      - name: Test commit action
+        id: commit
+        uses: ./
+        with:
+          commit_message: |
+            test: add test file from run ${{ github.run_number }} [skip ci]
+          file_pattern: 'test-output/*'
+
+      - name: Verify outputs
+        run: |
+          echo "Committed: ${{ steps.commit.outputs.committed }}"
+          echo "Commit SHA: ${{ steps.commit.outputs.commit_sha }}"
+          if [[ "${{ steps.commit.outputs.committed }}" != "true" ]]; then
+            echo "Expected commit to be created"
+            exit 1
+          fi
+          if [[ -z "${{ steps.commit.outputs.commit_sha }}" ]]; then
+            echo "Expected commit SHA to be set"
+            exit 1
+          fi
+
+  test-no-changes:
+    runs-on: ubuntu-latest
+    name: Test with no changes
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test commit with no changes
+        id: commit
+        uses: ./
+        with:
+          commit_message: 'test: no changes to commit [skip ci]'
+          file_pattern: 'nonexistent/*'
+
+      - name: Verify no commit created
+        run: |
+          echo "Committed: ${{ steps.commit.outputs.committed }}"
+          if [[ "${{ steps.commit.outputs.committed }}" != "false" ]]; then
+            echo "Expected no commit to be created"
+            exit 1
+          fi
+          if [[ -n "${{ steps.commit.outputs.commit_sha }}" ]]; then
+            echo "Expected commit SHA to be empty"
+            exit 1
+          fi
+
+  test-custom-path:
+    runs-on: ubuntu-latest
+    name: Test with custom working directory
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: repo
+
+      - name: Create test file in custom path
+        run: |
+          mkdir -p repo/test-output
+          echo "Custom path test ${{ github.run_number }}" > repo/test-output/custom.txt
+
+      - name: Test commit with custom path
+        id: commit
+        uses: ./
+        with:
+          path: repo
+          commit_message: |
+            test: add custom path file from run ${{ github.run_number }} [skip ci]
+          file_pattern: 'test-output/custom.txt'
+
+      - name: Verify commit
+        run: |
+          if [[ "${{ steps.commit.outputs.committed }}" != "true" ]]; then
+            echo "Expected commit to be created"
+            exit 1
+          fi
+
+  test-custom-author:
+    runs-on: ubuntu-latest
+    name: Test with custom author
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create test file
+        run: |
+          mkdir -p test-output
+          echo "Custom author test ${{ github.run_number }}" > test-output/author-test.txt
+
+      - name: Test commit with custom author
+        id: commit
+        uses: ./
+        with:
+          commit_message: |
+            test: add file with custom author from run ${{ github.run_number }} [skip ci]
+          file_pattern: 'test-output/author-test.txt'
+          commit_user_name: 'Test Bot'
+          commit_user_email: 'test@example.com'
+
+      - name: Verify commit author
+        run: |
+          cd ${{ github.workspace }}
+          AUTHOR_NAME=$(git log -1 --format='%an')
+          AUTHOR_EMAIL=$(git log -1 --format='%ae')
+
+          if [[ "$AUTHOR_NAME" != "Test Bot" ]]; then
+            echo "Expected author name to be 'Test Bot', got '$AUTHOR_NAME'"
+            exit 1
+          fi
+
+          if [[ "$AUTHOR_EMAIL" != "test@example.com" ]]; then
+            echo "Expected author email to be 'test@example.com', got '$AUTHOR_EMAIL'"
+            exit 1
+          fi
