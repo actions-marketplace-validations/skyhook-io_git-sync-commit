@@ -112,9 +112,12 @@ The action follows this workflow:
 2. **Stash changes** - Safely stashes any uncommitted changes (including untracked files)
 3. **Sync with upstream** - Pulls latest changes using rebase to maintain linear history
 4. **Restore changes** - Pops the stash to restore your changes
+   - **Automatic conflict resolution**: If conflicts occur between stashed changes and pulled changes, the action automatically resolves them by accepting your stashed changes (the newer modifications from this workflow)
+   - This ensures concurrent workflow changes are properly merged without leaving conflict markers
 5. **Stage files** - Adds files matching the specified pattern
-6. **Commit** - Creates a commit if there are staged changes
-7. **Push with retry** - Attempts to push with automatic retry on failure:
+6. **Safety check** - Verifies no conflict markers are present in staged files (additional safeguard)
+7. **Commit** - Creates a commit if there are staged changes
+8. **Push with retry** - Attempts to push with automatic retry on failure:
    - On push failure, rebases again and retries
    - Continues up to `max_retries` attempts
    - Handles race conditions from concurrent workflows
@@ -296,6 +299,14 @@ This usually means concurrent changes occurred. The action automatically handles
     commit_message: My commit
     max_retries: 10  # Increase for high-concurrency scenarios
 ```
+
+### Conflict markers in committed files
+
+The action now includes automatic conflict resolution and a safety check to prevent committing conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`). If you see the error "Conflict markers detected in staged files!", this means:
+1. A merge conflict occurred that couldn't be auto-resolved
+2. The action prevented committing corrupted files
+3. Review the workflow logs to understand the conflict
+4. This is a safety feature to protect your repository from corrupted files
 
 ### No commit created but expected changes
 
