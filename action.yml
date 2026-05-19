@@ -29,7 +29,7 @@ inputs:
   max_retries:
     description: 'Maximum number of push retry attempts (handles concurrent pushes)'
     required: false
-    default: '3'
+    default: '12'
 
 outputs:
   committed:
