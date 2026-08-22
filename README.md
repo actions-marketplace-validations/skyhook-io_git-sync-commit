@@ -95,7 +95,7 @@ A GitHub Action that safely syncs, commits, and pushes changes with automatic re
 | `path` | Working directory for git operations | No | `.` |
 | `commit_user_name` | Git committer name | No | `github-actions[bot]` |
 | `commit_user_email` | Git committer email | No | `41898282+github-actions[bot]@users.noreply.github.com` |
-| `max_retries` | Maximum number of push retry attempts (handles concurrent pushes) | No | `3` |
+| `max_retries` | Maximum number of push retry attempts (handles concurrent pushes) | No | `12` |
 
 ## Outputs
 
